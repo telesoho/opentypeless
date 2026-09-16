@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, MessageCircle } from 'lucide-react'
-import { isMacPlatform, useAppStore } from '../../stores/appStore'
+import { isMacPlatform, isWindowsPlatform, useAppStore } from '../../stores/appStore'
 import type { HotkeyMode, OutputMode, ShortcutBinding } from '../../stores/appStore'
 import {
   getPlatformCapabilities,
@@ -96,9 +96,22 @@ export function GeneralPane() {
     !accessibilityTrusted &&
     hotkeyRegistrationError?.includes('Accessibility permission may be denied'),
   )
-  const dictationSpecialOptions = isMac ? [{ value: 'Fn', label: 'Fn' }] : []
-  const askSpecialOptions = isMac ? [{ value: 'Fn+Space', label: 'Fn + Space' }] : []
-  const translateSpecialOptions = isMac ? [{ value: 'Fn+LeftShift', label: 'Fn + Left Shift' }] : []
+  const isWindows = isWindowsPlatform()
+  const dictationSpecialOptions = isMac
+    ? [{ value: 'Fn', label: 'Fn' }]
+    : isWindows
+      ? [{ value: 'RightAlt', label: 'Right Alt' }]
+      : []
+  const askSpecialOptions = isMac
+    ? [{ value: 'Fn+Space', label: 'Fn + Space' }]
+    : isWindows
+      ? [{ value: 'RightAlt+Space', label: 'Right Alt + Space' }]
+      : []
+  const translateSpecialOptions = isMac
+    ? [{ value: 'Fn+LeftShift', label: 'Fn + Left Shift' }]
+    : isWindows
+      ? [{ value: 'RightAlt+LeftShift', label: 'Right Alt + Left Shift' }]
+      : []
   const dictationBindings = config.hotkeys.dictationBindings?.length
     ? config.hotkeys.dictationBindings
     : [config.hotkeys.dictation]

@@ -605,7 +605,7 @@ describe('Settings tab 切换', () => {
     expect(screen.queryByText('settings.hotkeyInvalid')).toBeNull()
   })
 
-  it('does not offer Windows RightAlt as a default shortcut chip', async () => {
+  it('offers Windows RightAlt as a shortcut chip', async () => {
     const originalPlatform = window.navigator.platform
     Object.defineProperty(window.navigator, 'platform', {
       value: 'Win32',
@@ -622,13 +622,14 @@ describe('Settings tab 切换', () => {
     try {
       renderSettings()
 
-      fireEvent.click(screen.getByText('Ctrl+.'))
-      expect(screen.queryByRole('button', { name: 'Right Alt' })).toBeNull()
-      fireEvent.click(screen.getByText('settings.pressKeyCombination'))
-
       fireEvent.click(screen.getByText('Ctrl+/'))
-      expect(screen.queryByRole('button', { name: 'Right Alt' })).toBeNull()
-      expect(useAppStore.getState().config.hotkey).toBe('Ctrl+/')
+      expect(screen.getByRole('button', { name: 'Right Alt' })).toBeDefined()
+      fireEvent.click(screen.getByRole('button', { name: 'Right Alt' }))
+      expect(useAppStore.getState().config.hotkey).toBe('RightAlt')
+
+      fireEvent.click(screen.getByText('Ctrl+.'))
+      expect(screen.getByRole('button', { name: 'Right Alt + Space' })).toBeDefined()
+      fireEvent.click(screen.getByText('settings.pressKeyCombination'))
     } finally {
       Object.defineProperty(window.navigator, 'platform', {
         value: originalPlatform,
