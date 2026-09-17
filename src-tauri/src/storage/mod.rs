@@ -499,45 +499,9 @@ impl AppConfig {
     }
 
     fn normalize_hotkey_settings(&mut self) {
-        self.migrate_platform_typed_hotkeys();
         self.hotkeys.dictation_mode =
             normalize_hotkey_mode(&self.hotkeys.dictation_mode).to_string();
         self.sync_legacy_hotkey_fields_from_typed();
-    }
-
-    fn migrate_platform_typed_hotkeys(&mut self) {
-        #[cfg(target_os = "windows")]
-        {
-            if self.hotkeys.dictation.to_hotkey_string().as_deref() == Some("RightAlt") {
-                if let Some(binding) = ShortcutBinding::from_hotkey("Ctrl+/") {
-                    self.hotkeys.dictation = binding.clone();
-                    self.hotkeys.dictation_bindings = vec![binding];
-                }
-                self.hotkeys.dictation_mode = "hold".to_string();
-            }
-            if self
-                .hotkeys
-                .ask
-                .as_ref()
-                .and_then(ShortcutBinding::to_hotkey_string)
-                .as_deref()
-                == Some("RightAlt+Space")
-            {
-                self.hotkeys.ask = ShortcutBinding::from_hotkey("Ctrl+.");
-                self.hotkeys.ask_bindings = self.hotkeys.ask.clone().into_iter().collect();
-            }
-            if self
-                .hotkeys
-                .translate
-                .as_ref()
-                .and_then(ShortcutBinding::to_hotkey_string)
-                .as_deref()
-                == Some("RightAlt+LeftShift")
-            {
-                self.hotkeys.translate = None;
-                self.hotkeys.translate_bindings.clear();
-            }
-        }
     }
 
     fn sync_legacy_hotkey_fields_from_typed(&mut self) {
@@ -3071,6 +3035,71 @@ mod tests {
                 .as_ref()
                 .and_then(ShortcutBinding::to_hotkey_string),
             Some("Ctrl+Shift+/".to_string())
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn app_config_migrates_legacy_windows_right_alt_default() {
+        let value = serde_json::json!({
+            "hotkey": "RightAlt",
+            "ask_hotkey": "RightAlt+Space",
+            "hotkey_mode": "toggle"
+        });
+
+        let config = AppConfig::from_stored_value(value).unwrap();
+
+        assert_eq!(config.hotkey, "Ctrl+/");
+        assert_eq!(config.hotkeys.dictation.primary, "/");
+        assert_eq!(config.hotkeys.dictation.modifiers, vec!["Ctrl".to_string()]);
+        assert_eq!(config.hotkey_mode, "hold");
+        assert_eq!(config.ask_hotkey, "Ctrl+.");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn app_config_preserves_typed_right_alt_hotkeys_on_windows() {
+        let value = serde_json::json!({
+            "hotkey": "RightAlt",
+            "ask_hotkey": "RightAlt+Space",
+            "hotkey_mode": "toggle",
+            "hotkeys": {
+                "dictation": { "primary": "RightAlt", "modifiers": [] },
+                "ask": { "primary": "Space", "modifiers": ["RightAlt"] },
+                "translate": { "primary": "LeftShift", "modifiers": ["RightAlt"] },
+                "dictationBindings": [{ "primary": "RightAlt", "modifiers": [] }],
+                "askBindings": [{ "primary": "Space", "modifiers": ["RightAlt"] }],
+                "translateBindings": [{ "primary": "LeftShift", "modifiers": ["RightAlt"] }],
+                "editSelection": null,
+                "switchScene": null,
+                "openApp": null,
+                "dictationMode": "toggle"
+            }
+        });
+
+        let config = AppConfig::from_stored_value(value).unwrap();
+
+        assert_eq!(config.hotkey, "RightAlt");
+        assert_eq!(config.hotkeys.dictation.primary, "RightAlt");
+        assert_eq!(config.hotkeys.dictation.modifiers, Vec::<String>::new());
+        assert_eq!(config.hotkey_mode, "toggle");
+        assert_eq!(
+            config
+                .hotkeys
+                .ask
+                .as_ref()
+                .and_then(ShortcutBinding::to_hotkey_string)
+                .as_deref(),
+            Some("RightAlt+Space")
+        );
+        assert_eq!(
+            config
+                .hotkeys
+                .translate
+                .as_ref()
+                .and_then(ShortcutBinding::to_hotkey_string)
+                .as_deref(),
+            Some("RightAlt+LeftShift")
         );
     }
 

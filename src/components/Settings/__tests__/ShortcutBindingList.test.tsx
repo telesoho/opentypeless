@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ShortcutBindingList } from '../ShortcutBindingList'
 import * as tauri from '../../../lib/tauri'
@@ -194,5 +194,82 @@ describe('ShortcutBindingList', () => {
     unmount()
 
     expect(tauri.resumeHotkey).toHaveBeenCalled()
+  })
+
+  it('captures Right Alt as a standalone Windows shortcut', () => {
+    vi.useFakeTimers()
+    const originalPlatform = window.navigator.platform
+    Object.defineProperty(window.navigator, 'platform', {
+      value: 'Win32',
+      configurable: true,
+    })
+    const onChange = vi.fn()
+
+    try {
+      render(
+        <ShortcutBindingList
+          role="dictation"
+          label="Dictate"
+          bindings={[ctrlSlash]}
+          otherBindings={[]}
+          required
+          specialOptions={[]}
+          onChange={onChange}
+        />,
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: 'Ctrl+/' }))
+      fireEvent.keyDown(window, { key: 'Alt', code: 'AltRight', location: 2, altKey: true })
+      act(() => {
+        vi.advanceTimersByTime(1600)
+      })
+
+      expect(onChange).toHaveBeenCalledWith([{ primary: 'RightAlt', modifiers: [] }])
+    } finally {
+      Object.defineProperty(window.navigator, 'platform', {
+        value: originalPlatform,
+        configurable: true,
+      })
+      vi.useRealTimers()
+    }
+  })
+
+  it('captures Right Alt plus Space as a native Windows shortcut', () => {
+    vi.useFakeTimers()
+    const originalPlatform = window.navigator.platform
+    Object.defineProperty(window.navigator, 'platform', {
+      value: 'Win32',
+      configurable: true,
+    })
+    const onChange = vi.fn()
+
+    try {
+      render(
+        <ShortcutBindingList
+          role="ask"
+          label="Ask"
+          bindings={[f8]}
+          otherBindings={[]}
+          required={false}
+          specialOptions={[]}
+          onChange={onChange}
+        />,
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: 'F8' }))
+      fireEvent.keyDown(window, { key: 'Alt', code: 'AltRight', location: 2, altKey: true })
+      fireEvent.keyDown(window, { key: ' ', code: 'Space', altKey: true })
+      act(() => {
+        vi.advanceTimersByTime(1600)
+      })
+
+      expect(onChange).toHaveBeenCalledWith([{ primary: 'Space', modifiers: ['RightAlt'] }])
+    } finally {
+      Object.defineProperty(window.navigator, 'platform', {
+        value: originalPlatform,
+        configurable: true,
+      })
+      vi.useRealTimers()
+    }
   })
 })

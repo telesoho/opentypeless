@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MoreHorizontal, Plus, X } from 'lucide-react'
-import { bindingFromHotkey, hotkeyFromBinding, isMacPlatform } from '../../stores/appStore'
+import {
+  bindingFromHotkey,
+  hotkeyFromBinding,
+  isMacPlatform,
+  isWindowsPlatform,
+} from '../../stores/appStore'
 import type { HotkeyRole } from '../../lib/tauri'
 import type { ShortcutBinding } from '../../stores/appStore'
 import { pauseHotkey, resumeHotkey } from '../../lib/tauri'
@@ -34,7 +39,23 @@ const STANDALONE_KEYS = new Set([
   'F10',
   'F11',
   'F12',
+  'Fn',
+  'RightAlt',
 ])
+
+function isRightAltEvent(event: KeyboardEvent) {
+  return event.code === 'AltRight' || (event.key === 'Alt' && event.location === 2)
+}
+
+function isFnEvent(event: KeyboardEvent) {
+  return event.key === 'Fn' || event.code === 'Fn' || event.key === 'Function'
+}
+
+function nativeComboKey(event: KeyboardEvent) {
+  if (event.code === 'Space' || event.key === ' ' || event.key === 'Space') return 'Space'
+  if (event.code === 'ShiftLeft') return 'LeftShift'
+  return null
+}
 
 const MAX_BINDINGS = 3
 
@@ -59,6 +80,7 @@ export function HotkeyRecorder({
 }: HotkeyRecorderProps) {
   const { t } = useTranslation()
   const isMac = isMacPlatform()
+  const isWindows = isWindowsPlatform()
   const [recording, setRecording] = useState(false)
   const [pending, setPending] = useState<string | null>(null)
   const [modifierHint, setModifierHint] = useState<string | null>(null)
@@ -66,6 +88,7 @@ export function HotkeyRecorder({
   const autoConfirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const autoStarted = useRef(false)
   const recordingRef = useRef(false)
+  const nativeHeldRef = useRef({ rightAlt: false, fn: false })
 
   const clearTimer = useCallback(() => {
     if (!autoConfirmTimer.current) return
@@ -108,6 +131,7 @@ export function HotkeyRecorder({
     if (disabled) return
     pauseHotkey().catch(() => {})
     recordingRef.current = true
+    nativeHeldRef.current = { rightAlt: false, fn: false }
     setRecording(true)
     setPending(null)
     setModifierHint(null)
@@ -128,10 +152,45 @@ export function HotkeyRecorder({
     startRecording()
   }, [autoStart, startRecording])
 
+  const queuePending = useCallback(
+    (combo: string) => {
+      setModifierHint(null)
+      setPending(combo)
+      if (autoConfirmTimer.current) clearTimeout(autoConfirmTimer.current)
+      autoConfirmTimer.current = setTimeout(() => confirmHotkey(combo), 1500)
+    },
+    [confirmHotkey],
+  )
+
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       event.preventDefault()
       event.stopPropagation()
+
+      if (isWindows && isRightAltEvent(event)) {
+        nativeHeldRef.current.rightAlt = true
+        queuePending('RightAlt')
+        return
+      }
+      if (isMac && isFnEvent(event)) {
+        nativeHeldRef.current.fn = true
+        queuePending('Fn')
+        return
+      }
+
+      const nativeBase =
+        isWindows && nativeHeldRef.current.rightAlt
+          ? 'RightAlt'
+          : isMac && nativeHeldRef.current.fn
+            ? 'Fn'
+            : null
+      if (nativeBase) {
+        const comboKey = nativeComboKey(event)
+        if (comboKey) {
+          queuePending(`${nativeBase}+${comboKey}`)
+          return
+        }
+      }
 
       const parts: string[] = []
       if (isMac && event.metaKey) parts.push('Command')
@@ -170,25 +229,27 @@ export function HotkeyRecorder({
       if (parts.length === 0 && !STANDALONE_KEYS.has(keyName)) return
 
       parts.push(keyName)
-      const combo = parts.join('+')
-      setPending(combo)
-      if (autoConfirmTimer.current) clearTimeout(autoConfirmTimer.current)
-      autoConfirmTimer.current = setTimeout(() => confirmHotkey(combo), 1500)
+      queuePending(parts.join('+'))
     },
-    [confirmHotkey, isMac],
+    [isMac, isWindows, queuePending],
   )
+
+  const handleKeyUp = useCallback((event: KeyboardEvent) => {
+    if (isRightAltEvent(event)) nativeHeldRef.current.rightAlt = false
+    if (isFnEvent(event)) nativeHeldRef.current.fn = false
+    setModifierHint(null)
+  }, [])
 
   useEffect(() => {
     if (!recording) return
-    const clearModifierHint = () => setModifierHint(null)
     window.addEventListener('keydown', handleKeyDown, true)
-    window.addEventListener('keyup', clearModifierHint, true)
+    window.addEventListener('keyup', handleKeyUp, true)
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true)
-      window.removeEventListener('keyup', clearModifierHint, true)
+      window.removeEventListener('keyup', handleKeyUp, true)
       clearTimer()
     }
-  }, [clearTimer, handleKeyDown, recording])
+  }, [clearTimer, handleKeyDown, handleKeyUp, recording])
 
   const handleClick = () => {
     if (disabled) return
